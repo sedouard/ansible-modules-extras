@@ -496,20 +496,20 @@ def get_dependencies(dep_tree, resource_type):
     return matches
 
 
-def build_hierarchy(module, dependencies, tree=None):
+def build_hierarchy(dependencies, tree=None):
     tree = dict(top=True) if tree is None else tree
     for dep in dependencies:
         if dep.resource_name not in tree:
             tree[dep.resource_name] = dict(dep=dep, children=dict())
         if isinstance(dep, Dependency) and dep.depends_on is not None and len(dep.depends_on) > 0:
-            build_hierarchy(module, dep.depends_on, tree[dep.resource_name]['children'])
+            build_hierarchy(dep.depends_on, tree[dep.resource_name]['children'])
 
     if 'top' in tree:
         tree.pop('top', None)
         keys = list(tree.keys())
         for key1 in keys:
             for key2 in keys:
-                if key2 in tree and key1 in tree[key2]['children']:
+                if key2 in tree and key1 in tree[key2]['children'] and key1 in tree:
                     tree[key2]['children'][key1] = tree[key1]
                     tree.pop(key1)
     return tree
@@ -523,8 +523,8 @@ def get_ip_dict(ip):
                 dns_settings=ip.dns_settings)
 
 
-def get_instances(module, client, group, deployment):
-    dep_tree = build_hierarchy(module, deployment.properties.dependencies)
+def get_instances(client, group, deployment):
+    dep_tree = build_hierarchy(deployment.properties.dependencies)
     vms = get_dependencies(dep_tree, resource_type="Microsoft.Compute/virtualMachines")
 
     vms_and_ips = [(vm, get_dependencies(vm['children'], "Microsoft.Network/publicIPAddresses")) for vm in vms]
@@ -592,7 +592,7 @@ def main():
                     group_name=conn_info['resource_group_name'],
                     id=deployment.id,
                     outputs=deployment.properties.outputs,
-                    instances=get_instances(module, network_client, conn_info['resource_group_name'], deployment),
+                    instances=get_instances(network_client, conn_info['resource_group_name'], deployment),
                     changed=True,
                     msg='deployment created')
         module.exit_json(**data)
@@ -614,7 +614,7 @@ def mock_ansible():
 
     conn_info = {
         "deployment_name" : "az-roadshow-php-mem-deploy",
-        "resource_group_name" : "az-roadshow-php-mem"
+        "resource_group_name" : "az-roadshow-php-mem3"
     }
 
     class AnsibleModule:
@@ -622,12 +622,22 @@ def mock_ansible():
             "location": "westus",
             "template_link": "https://raw.githubusercontent.com/azure/azure-quickstart-templates/master/memcached-multi-vm-ubuntu/azuredeploy.json",
             "parameters_link" : None,
-            "parameters": {"location": {"value": "West US"}, "newStorageAccountName": {"value": "azroadshowphpmemstor"}, "domainName":{"value": "azroadshowossphpmemlmaz"}, "adminUsername": {"value": "azureuser"}, "adminPassword":{"value": "P4ss"}, "numberOfMemcachedInstances": {"value": 3}}
+            "parameters": {"location": {"value": "West US"}, "newStorageAccountName": {"value": "azroadshowphpmemstor3"}, "domainName":{"value": "azroadshowossphpmemlmaz3"}, "adminUsername": {"value": "azureuser"}, "adminPassword":{"value": "P4ssword"}, "numberOfMemcachedInstances": {"value": 3}}
         }
         def fail_json(self, msg):
             print("ErrMsg: {}".format(msg))
 
-    deployment = deploy_template(AnsibleModule(), resource_client, conn_info)
+    #deployment = deploy_template(AnsibleModule(), resource_client, conn_info)
+    deployment = resource_client.deployments.get(conn_info['resource_group_name'], conn_info['deployment_name'])
+    data = dict(name=deployment.name,
+                group_name=conn_info['resource_group_name'],
+                id=deployment.id,
+                outputs=deployment.properties.outputs,
+                instances=get_instances(network_client, conn_info['resource_group_name'], deployment),
+                changed=True,
+                msg='deployment created')
+    import json
+    print(json.dumps(data))
 
 if __name__ == '__main__':
     #main()
